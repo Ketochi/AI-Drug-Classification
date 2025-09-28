@@ -1,0 +1,185 @@
+import os
+import numpy as np
+import pandas as pd
+from sklearn.metrics import classification_report, accuracy_score, hamming_loss
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.multiclass import OneVsRestClassifier
+from xgboost import XGBClassifier
+from transformers import AutoTokenizer, AutoModel
+import torch
+
+# ------------------------------
+# Load dataset
+# ------------------------------
+path = r"C:\Users\HP\OneDrive\Desktop\datasets\Med Details\Medicine Cleaned.csv"
+df = pd.read_csv(path)
+pd.set_option("display.max_columns", None)
+
+df = df.drop(columns=["Image URL", "Medicine Name", "Classified", "Primary", "Secondary"])
+
+# ------------------------------
+# PubMedBERT model + tokenizer
+# ------------------------------
+model_name = "microsoft/BiomedNLP-PubMedBERT-base-uncased-abstract"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModel.from_pretrained(model_name)
+
+# ------------------------------
+# Embedding helper (with batching)
+# ------------------------------
+def get_embeddings_batch(texts, tokenizer, model, batch_size=16, max_length=128):
+    all_embeddings = []
+
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i+batch_size]
+
+        inputs = tokenizer(
+            batch_texts,
+            padding=True,
+            truncation=True,
+            max_length=max_length,
+            return_tensors="pt"
+        )
+
+        with torch.no_grad():
+            outputs = model(**inputs)
+
+        batch_embeddings = outputs.last_hidden_state[:, 0, :].numpy()
+        all_embeddings.append(batch_embeddings)
+
+    return np.vstack(all_embeddings)
+
+# ------------------------------
+# Load or compute embeddings
+# ------------------------------
+embed_file = "pubmed_embeddings.npy"
+
+if os.path.exists(embed_file):
+    print("✅ Loading cached embeddings...")
+    X_text = np.load(embed_file)
+else:
+    print("⏳ Computing embeddings (first time only)...")
+    texts = (df["Composition"].fillna("") + " " + df["Uses"].fillna("")).tolist()
+    X_text = get_embeddings_batch(texts, tokenizer, model, batch_size=16, max_length=128)
+    np.save(embed_file, X_text)
+    print("💾 Saved embeddings to", embed_file)
+
+# ------------------------------
+# Numerical features
+# ------------------------------
+numerical = ["Excellent Review %", "Average Review %", "Poor Review %"]
+scaler = MinMaxScaler()
+X_num = scaler.fit_transform(df[numerical])
+
+# Final feature matrix
+X = np.hstack([X_text, X_num])
+
+# ------------------------------
+# Targets
+# ------------------------------
+target_cols_side = [ # Side Effects
+    'Abdominal pain', 'Anemia', 'Back pain', 'Chest pain',
+    'Cough', 'Diarrhea', 'Dizziness', 'Fever', 'Headache',
+    'High blood pressure', 'Increased liver enzymes', 'Indigestion',
+    'Injection site reactions', 'Joint pain', 'Low blood pressure',
+    'Muscle pain', 'Nausea', 'Nosebleeds', 'Pain', 'Protein in urine',
+    'Rash', 'Rectal bleeding', 'Sleepiness', 'Sore throat', 'Taste change',
+    'Unclassified', 'Upper respiratory tract infection',
+    'Urinary tract infection', 'Vomiting', 'Weakness'
+]
+y_side = df[target_cols_side]
+
+target_cols_class = ['Analgesics & Anti-inflammatory', 'Antimicrobials', # Drug Class Based on Pharmacology
+       'CNS & Neuropsychiatric', 'Cardiovascular & Hematologic',
+       'Endocrine & Metabolic', 'Fertility & Reproductive',
+       'Gastrointestinal & Hepatic', 'Immunological', 'Oncology',
+       'Ophthalmology', 'Respiratory', 'Supplements & Nutrition', 'Toxicology',
+       'Urological']
+y_class = df[target_cols_class]
+# ------------------------------
+# Train-test split
+# ------------------------------
+X_valid, X_test, y_valid, y_test = train_test_split(
+    X, y_class, test_size=0.2, random_state=42
+)
+X_train,X_check,y_train,y_check = train_test_split(X_valid,y_valid,test_size=0.2,random_state=42)
+
+# ------------------------------
+# Train model on train set
+# ------------------------------
+model_c = OneVsRestClassifier(
+    XGBClassifier(
+        objective="binary:logistic",
+        eval_metric="logloss",
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=6,
+        tree_method ="hist"
+    )
+)
+
+print("⏳ Training model...")
+model_c.fit(X_train, y_train)
+print("✅ Model trained")
+
+# ------------------------------
+# Validation performance
+# ------------------------------
+print("\n📊 Validation Performance For Classes:")
+val_preds = model_c.predict(X_check)
+print("Subset Accuracy:", accuracy_score(y_check, val_preds))
+print("Hamming Loss:", hamming_loss(y_check, val_preds))
+print(classification_report(y_check, val_preds, target_names=target_cols_class,zero_division=0))
+
+# ------------------------------
+# Test performance (final holdout)
+# ------------------------------
+print("\n📊 Test Performance For Classes:")
+test_preds = model_c.predict(X_test)
+print("Subset Accuracy:", accuracy_score(y_test, test_preds))
+print("Hamming Loss:", hamming_loss(y_test, test_preds))
+print(classification_report(y_test, test_preds, target_names=target_cols_class,zero_division=0))
+
+#----Splits for Side Effects------
+
+X_valids, X_tests, y_valids, y_tests = train_test_split(
+    X, y_side, test_size=0.2, random_state=42
+)
+X_trains,X_checks,y_trains,y_checks = train_test_split(X_valids,y_valids,test_size=0.2,random_state=42)
+
+# ------------------------------
+# Train model on train set
+# ------------------------------
+model_s = OneVsRestClassifier(
+    XGBClassifier(
+        objective="binary:logistic",
+        eval_metric="logloss",
+        n_estimators=100,
+        learning_rate=0.1,
+        max_depth=6,
+        tree_method = "hist"
+    )
+)
+
+print("⏳ Training model...")
+model_s.fit(X_trains, y_trains)
+print("✅ Model trained")
+
+# ------------------------------
+# Validation performance
+# ------------------------------
+print("\n📊 Validation Performance For Side Effects:")
+val_preds_s = model_s.predict(X_checks)
+print("Subset Accuracy:", accuracy_score(y_checks, val_preds_s))
+print("Hamming Loss:", hamming_loss(y_checks, val_preds_s))
+print(classification_report(y_checks, val_preds_s, target_names=target_cols_side,zero_division=0))
+
+# ------------------------------
+# Test performance (final holdout)
+# ------------------------------
+print("\n📊 Test Performance For Side Effects:")
+test_preds_s = model_s.predict(X_tests)
+print("Subset Accuracy:", accuracy_score(y_tests, test_preds_s))
+print("Hamming Loss:", hamming_loss(y_tests, test_preds_s))
+print(classification_report(y_tests, test_preds_s, target_names=target_cols_side,zero_division=0))
