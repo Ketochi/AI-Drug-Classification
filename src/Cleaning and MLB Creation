@@ -1,0 +1,199 @@
+import os
+import re
+import pandas as pd
+from sklearn.preprocessing import MultiLabelBinarizer
+from unicodedata import category
+
+# ======================
+# Load dataset
+# ======================
+path = r"C:\Users\HP\OneDrive\Desktop\datasets\Med Details\Medicine_Details.csv"
+df = pd.read_csv(path)
+
+pd.set_option("display.max_rows", None)
+pd.set_option("display.max_columns", None)
+
+# ======================
+# Preprocess Uses column
+# ======================
+df["Uses_cleaned"] = df["Uses"].str.strip()
+
+# ======================
+# Drug class dictionary
+# ======================
+drug_classes = {
+    "Analgesics & Anti-inflammatory": [
+        "pain", "analgesic", "paracetamol", "ibuprofen", "diclofenac", "morphine",
+        "codeine", "fentanyl", "headache", "migraine", "arthritis", "osteoarthritis",
+        "rheumatoid arthritis", "neuralgia", "back pain", "fibromyalgia", "Burns",
+        "inflammation", "anti-inflammatory", "Swelling", "itching", "allergic", "allergy",
+        "acne", "dry eyes", "dermatitis", "eczema", "conjunctivitis", "inflammatory disease",
+        "Melasma", "Rosacea", "Hyperpigmentation", "Angioedema", "Nasal congestion",
+        "Chickenpox"
+    ],
+
+    "Antimicrobials": [
+        "fungal", "influenza", "herpes", "infection", "infections", "parasitic", "bacterial",
+        "antibiotic", "antiviral", "antifungal", "antiparasitic", "penicillin", "cephalosporin",
+        "macrolide", "fluoroquinolone", "acyclovir", "oseltamivir", "chloroquine", "albendazole",
+        "ivermectin", "dandruff", "cold", "tuberculosis", "malaria", "hiv", "aids", "hepatitis",
+        "measles", "pneumonia", "typhoid", "leprosy", "urinary tract infection", "syphilis",
+        "gonorrhea", "chlamydia", "sepsis", "septicemia", "whooping cough", "cholera",
+        "Coronavirus", "Scabies", "Meningococcal", "Rubella", "Vaginitis", "Warts", "Polio"
+    ],
+
+    "Cardiovascular & Hematologic": [
+        "Varicose veins", "heart", "angina", "failure", "myocardial infarction", "arrhythmia",
+        "tachycardia", "bradycardia", "hypertrophy", "atherosclerosis", "cardiomyopathy",
+        "peripheral vascular disease", "ischemic heart disease", "endocarditis", "pericarditis",
+        "Patent ductus arteriosus", "BradycardiaTreatment", "claudication", "Varicose",
+        "hypertension", "blood pressure", "Hypertensive", "edema", "renal disease",
+        "kidney disease", "glomerulonephritis", "nephrotic syndrome", "chronic kidney disease",
+        "cholesterol", "statin", "fibrate", "anticoagulant", "antiplatelet", "aspirin", "warfarin",
+        "heparin", "clopidogrel", "blood clots", "thrombosis", "Thrombophlebitis", "anemia",
+        "hemophilia", "thrombocytopenia", "sickle cell disease", "polycythemia", "leukopenia",
+        "aplastic anemia", "deep vein thrombosis", "pulmonary embolism", "myelodysplasia",
+        "lymphadenopathy", "Bleeding", "haemorrhage"
+    ],
+
+    "CNS & Neuropsychiatric": [
+        "depression", "antidepressant", "psychosis", "antipsychotic", "anxiety", "sedative",
+        "Schizophrenia", "mania", "bipolar", "autism", "adhd", "ptsd", "panic disorder", "phobia",
+        "ocd", "dysthymia", "post traumatic", "stress", "Panic", "epilepsy", "anticonvulsant",
+        "parkinson", "levodopa", "dopamine", "stroke", "multiple sclerosis", "seizure",
+        "neuropathy", "dementia", "Alzheimer's", "Huntington's", "chorea",
+        "Amyotrophic lateral sclerosis (ALS)", "(ALS)", "head trauma", "encephalitis",
+        "meningitis", "Rabies", "Tetanus", "anesthesia", "Muscle", "Meniere's", "Vertigo",
+        "surgical", "Cognitive", "hearing loss"
+    ],
+
+    "Endocrine & Metabolic": [
+        "diabetes", "insulin", "metformin", "thyroid", "levothyroxine", "carbimazole",
+        "corticosteroid", "prednisone", "dexamethasone", "obesity", "cushing syndrome",
+        "addison disease", "polycystic ovary syndrome", "hyperthyroidism", "hypothyroidism",
+        "metabolic syndrome", "acromegaly", "pituitary disorders", "parathyroid disease",
+        "hyperlipidemia", "hypogonadism", "insomnia", "InsomniaTreatment", "Hormone", "Hormonal",
+        "hypoglycemia"
+    ],
+
+    "Respiratory": [
+        "asthma", "copd", "bronchitis", "antihistamine", "loratadine", "cetirizine", "decongestant",
+        "pseudoephedrine", "salbutamol", "ipratropium", "cough", "sneezing", "respiratory",
+        "sinusitis", "rhinitis", "pharyngitis", "laryngitis", "tonsillitis", "emphysema", "pleurisy",
+        "mucus", "pulmonary"
+    ],
+
+    "Gastrointestinal & Hepatic": [
+        "acid", "dyspepsia", "abdominal", "anal", "reflux", "ulcer", "ulcers", "antacid", "ppi",
+        "pile", "piles", "omeprazole", "ranitidine", "famotidine", "nausea", "vomiting",
+        "ondansetron", "metoclopramide", "laxative", "diarrhea", "loperamide", "gastritis",
+        "colitis", "pancreatitis", "appendicitis", "gallstones", "crohn disease",
+        "ulcerative colitis", "ibs", "diverticulitis", "fatty liver disease", "constipation",
+        "IndigestionTreatment", "indigestion", "biliary", "bowel", "ConstipationTreatment",
+        "Stomach", "Dental", "Heartburn", "mouth", "Dysentery", "liver", "hepatic"
+    ],
+
+    "Oncology": [
+        "cancer", "tumor", "chemotherapy", "cytotoxic", "targeted", "monoclonal", "hormonal",
+        "tamoxifen", "aromatase", "leukemia", "lymphoma", "melanoma", "sarcoma", "carcinoma",
+        "prostate cancer", "breast cancer", "colon cancer", "lung cancer", "ovarian cancer",
+        "pancreatic cancer", "gastric cancer", "brain tumor", "Prostate", "myelomaTreatment",
+        "CancerTreatment", "myeloma", "Fibrocystic Breast Disease"
+    ],
+
+    "Immunological": [
+        "immune", "psoriasis", "immunosuppressant", "biliary cirrhosis", "cirrhosis",
+        "immunomodulator", "interferon", "biologic", "vaccine", "methotrexate", "cyclosporine",
+        "tacrolimus", "autoimmune", "lupus", "sjogren syndrome", "hashimoto disease",
+        "celiac disease", "inflammatory bowel disease", "dermatomyositis", "scleroderma",
+        "transplant", "Rheumatoid", "keratosis", "Vitiligo", "oral lichen planus"
+    ],
+
+    "Supplements & Nutrition": [
+        "deficiency", "appetite", "vitamin", "vitamins", "malnutrition", "osteoporosis", "rickets",
+        "kwashiorkor", "marasmus", "scurvy", "beriberi", "hair", "fluid replacement", "calcium",
+        "Nutritional", "iron", "phosphate", "sodium", "Wrinkles", "potassium", "Dry Skin", "earwax",
+        "Skin disorders", "Sunburn", "OsteoporosisTreatment", "smoking"
+    ],
+
+    "Fertility & Reproductive": [
+        "sexual", "vaginal", "erectile", "infertility", "menopause", "andropause", "amenorrhea",
+        "impotence", "dysmenorrhea", "endometriosis", "fibroids", "miscarriage", "Infantile",
+        "Contraception", "Contraceptive", "Menopausal", "Labor", "menstrual", "(PCOS)", "ejaculation",
+        "labour"
+    ],
+
+    "Urological": [
+        "benign", "prostatic", "kidney", "alcohol", "Alcohol addiction", "Urinary", "urine",
+        "bladder", "Interstitial cystitis", "gout"
+    ],
+
+    "Ophthalmology": [
+        "Uveitis", "Myopia", "Glaucoma", "eye", "Pupil"
+    ],
+
+    "Toxicology": [
+        "organophosphate poisoning", "pesticide poisoning", "nerve agent poisoning",
+        "cholinergic crisis", "poison", "overdose", "Reversing", "Snake Bite"
+    ]
+}
+
+# ======================
+# Classification helpers
+# ======================
+def classifier(text):
+    matches = []
+    for keyword, values in drug_classes.items():
+        if any(re.search(rf"\b{value}\b", text, re.IGNORECASE) for value in values):
+            matches.append(keyword)
+    return matches if matches else ["Unclassified"]
+
+df["Classified"] = df["Uses_cleaned"].apply(classifier)
+df["Primary"] = df["Classified"].apply(lambda x: x[0] if len(x) > 0 else "")
+df["Secondary"] = df["Classified"].apply(lambda x: ", ".join(x[1:]) if len(x) > 1 else "NaN")
+df = df.drop(columns="Uses_cleaned")
+
+# ======================
+# MultiLabelBinarizer for classes
+# ======================
+mlb = MultiLabelBinarizer()
+y = mlb.fit_transform(df["Classified"])
+
+expanded_df = pd.DataFrame(y, columns=mlb.classes_)
+df["Classified"] = df["Classified"].apply(lambda x: ",".join(x))
+
+df_finished = pd.concat([df, expanded_df], axis=1)
+
+# ======================
+# Side effects extraction
+# ======================
+side_effects = [
+    "Rectal bleeding", "Taste change", "Headache", "Nosebleeds", "Back pain",
+    "Protein in urine", "Cough", "Pain", "Sleepiness", "Low blood pressure",
+    "Indigestion", "High blood pressure", "Diarrhea", "Vomiting", "Dizziness",
+    "Weakness", "Joint pain", "Sore throat", "Flu-like symptoms", "Muscle pain",
+    "Chest pain", "Increased liver enzymes", "Upper respiratory tract infection",
+    "Rash", "Abdominal pain", "Fever", "Urinary tract infection", "Nausea",
+    "Anemia", "Application site reactions (burning, irritation, itching, redness)",
+    "Injection site reactions"
+]
+
+def side(text):
+    matches = []
+    for effect in side_effects:
+        if effect.lower() in text.lower():
+            matches.append(effect)
+    return matches if matches else ["Unclassified"]
+
+df["Side_effects_cleaned"] = df["Side_effects"].apply(side)
+
+mlb2 = MultiLabelBinarizer()
+z = mlb2.fit_transform(df["Side_effects_cleaned"])
+
+new_df = pd.DataFrame(z, columns=mlb2.classes_)
+complete_df = pd.concat([df_finished, new_df], axis=1)
+
+# ======================
+# Final output
+# ======================
+print(complete_df.columns)
