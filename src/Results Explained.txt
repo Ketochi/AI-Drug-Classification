@@ -1,0 +1,47 @@
+# Key Insights on Model Performance
+
+1. **Drug Class Prediction**
+Subset Accuracy: ~96% and Hamming Loss: 0.0036 indicate that the model almost always predicts the correct set of classes for each drug.
+
+Precision, Recall, and F1-scores for most classes are above 0.95, showing strong balance between correctly identifying true positives and avoiding false positives.
+
+Rare classes such as Toxicology (support = 2) had 0.00 scores, which is expected due to extreme class imbalance. This lowers the macro average (0.89 F1) compared to the micro average (0.97 F1).
+
+Correlation: Micro scores are dominated by frequent classes (e.g., Analgesics, Antimicrobials), while macro scores penalize poor performance on rare classes.
+
+2. **Side Effect Prediction**
+Subset Accuracy: ~88% and Hamming Loss: 0.010 are lower than for drug classes, reflecting the greater complexity of side effect prediction.
+
+Micro average F1: 0.96 vs. Macro average F1: 0.87 again shows the imbalance effect: frequent side effects like Headache (F1 = 0.97, support = 1080) and Nausea (F1 = 0.97, support = 1244) are predicted very well, while rare ones like Protein in urine (support = 2) and Rectal bleeding (support = 1) are missed entirely.
+
+Weighted averages (F1 ≈ 0.96) are close to micro scores, confirming that the model is highly effective overall but biased toward common side effects.
+
+3. **Comparative Insight**
+Drug classes are easier to predict than side effects. This is likely because drug classes are strongly tied to the drug’s active ingredients and uses, which are explicitly described in the text.
+
+Side effects are harder to capture since they can arise from excipients, dosage, patient variability, or interactions not present in the text features.
+
+Correlation between metrics:
+
+High micro scores show the model is reliable for frequent labels.
+
+Lower macro scores highlight the need to address rare outcomes.
+
+The gap between subset accuracy and Hamming loss illustrates that while most individual labels are predicted correctly, predicting the entire set of labels for a sample is more challenging.
+
+Conclusion
+This study shows that transformer‑based embeddings combined with gradient boosting can effectively predict drug classes and side effects from textual descriptions. Drug class prediction achieved very high accuracy, while side effect prediction was less precise. This gap likely reflects the complexity of side effects, which can be influenced by excipients, dosage, and patient variability. Rare labels also proved difficult to predict, highlighting the impact of class imbalance.
+
+Practical Applications
+Drug Discovery: Screen candidate compounds for likely classes and side effect profiles.
+
+Pharmacovigilance: Support post‑marketing surveillance by flagging potential adverse reactions.
+
+Clinical Decision Support: Assist healthcare professionals in identifying drug classes and safety risks.
+
+Biomedical Research: Enable large‑scale text mining of drug–effect relationships.
+
+Future Work
+Address class imbalance with oversampling, cost‑sensitive learning, or data augmentation.
+
+Incorporate additional features such as dosage, molecular fingerprints, or patient demographics
